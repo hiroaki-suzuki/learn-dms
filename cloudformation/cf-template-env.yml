@@ -1,0 +1,257 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: A sample of DMS
+
+Parameters:
+  NamePrefix:
+    Type: String
+  MasterUserPassword:
+    Type: String
+  VPCCidr:
+    Type: String
+  PublicSubnetCidr:
+    Type: String
+  PrivateSubnetACidr:
+    Type: String
+  PrivateSubnetCCidr:
+    Type: String
+  AppAvailabilityZoneA:
+    Type: AWS::EC2::AvailabilityZone::Name
+  AppAvailabilityZoneC:
+    Type: AWS::EC2::AvailabilityZone::Name
+  AuroraSecurityGroupCidrForDMS:
+    Type: String
+
+Resources:
+  # Network
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref VPCCidr
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      Tags:
+        - Key: Name
+          Value: !Join [ "-", [ !Ref NamePrefix, "vpc" ] ]
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Join [ "-", [ !Ref NamePrefix, "igw" ] ]
+  VPCGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref VPC
+      InternetGatewayId: !Ref InternetGateway
+  PublicSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: !Ref AppAvailabilityZoneA
+      CidrBlock: !Ref PublicSubnetCidr
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Join [ "-", [ !Ref NamePrefix, "public", "subnet", "a" ] ]
+  PrivateSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: !Ref AppAvailabilityZoneA
+      CidrBlock: !Ref PrivateSubnetACidr
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Join [ "-", [ !Ref NamePrefix, "private", "subnet", "a" ] ]
+  PrivateSubnetC:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: !Ref AppAvailabilityZoneC
+      CidrBlock: !Ref PrivateSubnetCCidr
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Join [ "-", [ !Ref NamePrefix, "private", "subnet", "c" ] ]
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Join [ "-", [ !Ref NamePrefix, "public", "rtb" ] ]
+  PublicRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnet
+  PublicInternetGatewayRoute:
+    Type: AWS::EC2::Route
+    Properties:
+      DestinationCidrBlock: "0.0.0.0/0"
+      GatewayId: !Ref InternetGateway
+      RouteTableId: !Ref PublicRouteTable
+  PrivateRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Join [ "-", [ !Ref NamePrefix, "private", "rtb" ] ]
+  PrivateARouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      SubnetId: !Ref PrivateSubnetA
+  PrivateCRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      SubnetId: !Ref PrivateSubnetC
+  # Security Group
+  BastionEC2SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: !Join [ "-", [ !Ref NamePrefix, "bastion", "sg" ] ]
+      GroupDescription: "Bastion EC2 Security Group"
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: !Join [ "-", [ !Ref NamePrefix, "bastion", "sg" ] ]
+  AuroraSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: !Join [ "-", [ !Ref NamePrefix, "aurora", "sg" ] ]
+      GroupDescription: "Aurora Security Group"
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 3306
+          ToPort: 3306
+          SourceSecurityGroupId: !Ref BastionEC2SecurityGroup
+        - IpProtocol: tcp
+          FromPort: 3306
+          ToPort: 3306
+          CidrIp: !Ref AuroraSecurityGroupCidrForDMS
+      Tags:
+        - Key: Name
+          Value: !Join [ "-", [ !Ref NamePrefix, "aurora", "sg" ] ]
+  # Bastion EC2
+  BastionEC2Role:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Join [ "-", [ !Ref NamePrefix, "ec2", "bastion", "role" ] ]
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+            Action:
+              - "sts:AssumeRole"
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/EC2InstanceConnect
+  BastionEC2InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - !Ref BastionEC2Role
+  BastionEC2:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: ami-0bba69335379e17f8
+      InstanceType: t2.micro
+      IamInstanceProfile: !Ref BastionEC2InstanceProfile
+      NetworkInterfaces:
+        - DeviceIndex: "0"
+          AssociatePublicIpAddress: true
+          SubnetId: !Ref PublicSubnet
+          GroupSet:
+            - !Ref BastionEC2SecurityGroup
+      Tags:
+        - Key: Name
+          Value: !Join [ "-", [ !Ref NamePrefix, "bastion" ] ]
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          yum -y update
+          yum -y remove mariadb-libs
+          yum -y install https://dev.mysql.com/get/mysql80-community-release-el7-1.noarch.rpm
+          yum-config-manager –disable mysql80-community
+          yum-config-manager –enable mysql57-community
+          rpm --import https://repo.mysql.com/RPM-GPG-KEY-mysql-2022
+          yum -y install mysql-community-client
+  # Aurora
+  AuroraDBSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupName: !Join [ "-", [ !Ref NamePrefix, "db", "sg" ] ]
+      DBSubnetGroupDescription: Subnets available for the RDS DB Instance
+      SubnetIds:
+        - !Ref PrivateSubnetA
+        - !Ref PrivateSubnetC
+  AuroraDBClusterParameterGroup:
+    Type: AWS::RDS::DBClusterParameterGroup
+    Properties:
+      DBClusterParameterGroupName: !Join [ "-",[ !Ref NamePrefix, "db", "cluster", "pg" ] ]
+      Description: "Aurora ClusterParameterGroup"
+      Family: "aurora-mysql5.7"
+      Parameters:
+        time_zone: "Asia/Tokyo"
+        binlog_format: "ROW"
+  AuroraDBParameterGroup:
+    Type: AWS::RDS::DBParameterGroup
+    Properties:
+      DBParameterGroupName: !Join [ "-", [ !Ref NamePrefix, "db", "instance", "pg" ] ]
+      Description: "Aurora InstanceParameterGroup"
+      Family: "aurora-mysql5.7"
+  AuroraOptionGroup:
+    Type: AWS::RDS::OptionGroup
+    Properties:
+      EngineName: aurora-mysql
+      MajorEngineVersion: "5.7"
+      OptionGroupDescription: "Aurora InstanceOptionGroup"
+      OptionGroupName: !Join [ "-", [ !Ref NamePrefix, "instance", "og" ] ]
+  AuroraCluster:
+    Type: AWS::RDS::DBCluster
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      DBClusterIdentifier: !Join [ "-", [ !Ref NamePrefix, "cluster" ] ]
+      DatabaseName: sample
+      DBClusterParameterGroupName: !Ref AuroraDBClusterParameterGroup
+      DBSubnetGroupName: !Ref AuroraDBSubnetGroup
+      Engine: aurora-mysql
+      BackupRetentionPeriod: 1
+      MasterUsername: admin
+      MasterUserPassword: !Ref MasterUserPassword
+      Port: 3306
+      StorageEncrypted: True
+      VpcSecurityGroupIds:
+        - !Ref AuroraSecurityGroup
+  AuroraInstance:
+    Type: AWS::RDS::DBInstance
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      DBClusterIdentifier: !Ref AuroraCluster
+      Engine: aurora-mysql
+      DBInstanceClass: 'db.t3.small'
+      DBInstanceIdentifier: !Join [ "-", [ !Ref NamePrefix, 'instance', "01" ] ]
+      DBParameterGroupName: !Ref AuroraDBParameterGroup
+      OptionGroupName: !Ref AuroraOptionGroup
+
+Outputs:
+  VPCId:
+    Value: !Ref VPC
+  PrivateRouteTableId:
+    Value: !Ref PrivateRouteTable
+  PrivateSubnetAId:
+    Value: !Ref PrivateSubnetA
+  PrivateSubnetCId:
+    Value: !Ref PrivateSubnetC
+  DatabaseEndpointAddress:
+    Value: !GetAtt AuroraCluster.Endpoint.Address

@@ -1,0 +1,70 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: A sample of DMS
+
+Parameters:
+  NamePrefix:
+    Type: String
+    Default: hs-dms-sample-old
+  OldVPCCidr:
+    Type: String
+    Default: 192.168.0.0/16
+  OldPublicSubnetCidr:
+    Type: String
+    Default: 192.168.0.0/24
+  OldPrivateSubnetACidr:
+    Type: String
+    Default: 192.168.10.0/24
+  OldPrivateSubnetCCidr:
+    Type: String
+    Default: 192.168.11.0/24
+  AppAvailabilityZoneA:
+    Type: AWS::EC2::AvailabilityZone::Name
+    Default: 'ap-northeast-1a'
+  AppAvailabilityZoneC:
+    Type: AWS::EC2::AvailabilityZone::Name
+    Default: 'ap-northeast-1c'
+  NewVPCCidr:
+    Type: String
+    Default: 172.16.0.0/16
+  MasterUserPassword:
+    Type: String
+  NewDatabaseEndpointAddress:
+    Type: String
+
+Resources:
+  # Old Environment
+  OldEnvStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: ./cf-template-env.yml
+      Parameters:
+        NamePrefix: !Join [ "-" ,[ !Ref NamePrefix, "old" ] ]
+        MasterUserPassword: !Ref MasterUserPassword
+        VPCCidr: !Ref OldVPCCidr
+        PublicSubnetCidr: !Ref OldPublicSubnetCidr
+        PrivateSubnetACidr: !Ref OldPrivateSubnetACidr
+        PrivateSubnetCCidr: !Ref OldPrivateSubnetCCidr
+        AppAvailabilityZoneA: !Ref AppAvailabilityZoneA
+        AppAvailabilityZoneC: !Ref AppAvailabilityZoneC
+        AuroraSecurityGroupCidrForDMS: !Ref OldVPCCidr
+  # DMS
+  DMSStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: ./cf-template-dms.yml
+      Parameters:
+        NamePrefix: !Ref NamePrefix
+        MasterUserPassword: !Ref MasterUserPassword
+        OldVPCId: !GetAtt OldEnvStack.Outputs.VPCId
+        OldVPCCidr: !Ref OldVPCCidr
+        NewVPCCidr: !Ref NewVPCCidr
+        OldPrivateSubnetAId: !GetAtt OldEnvStack.Outputs.PrivateSubnetAId
+        OldPrivateSubnetCId: !GetAtt OldEnvStack.Outputs.PrivateSubnetCId
+        OldServerName: !GetAtt OldEnvStack.Outputs.DatabaseEndpointAddress
+        NewServerName: !Ref NewDatabaseEndpointAddress
+
+Outputs:
+  OldVPCId:
+    Value: !GetAtt OldEnvStack.Outputs.VPCId
+  OldPrivateRouteTableId:
+    Value: !GetAtt OldEnvStack.Outputs.PrivateRouteTableId

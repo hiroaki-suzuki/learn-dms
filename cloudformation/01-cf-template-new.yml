@@ -1,0 +1,55 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: A sample of DMS
+
+Parameters:
+  NamePrefix:
+    Type: String
+    Default: hs-dms-sample-new
+  NewVPCCidr:
+    Type: String
+    Default: 172.16.0.0/16
+  NewPublicSubnetCidr:
+    Type: String
+    Default: 172.16.0.0/24
+  NewPrivateSubnetACidr:
+    Type: String
+    Default: 172.16.10.0/24
+  NewPrivateSubnetCCidr:
+    Type: String
+    Default: 172.16.11.0/24
+  AppAvailabilityZoneA:
+    Type: AWS::EC2::AvailabilityZone::Name
+    Default: 'ap-northeast-1a'
+  AppAvailabilityZoneC:
+    Type: AWS::EC2::AvailabilityZone::Name
+    Default: 'ap-northeast-1c'
+  OldVPCCidr:
+    Type: String
+    Default: 192.168.0.0/16
+  MasterUserPassword:
+    Type: String
+
+Resources:
+  # New Environment
+  NewEnvStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: ./cf-template-env.yml
+      Parameters:
+        NamePrefix: !Join [ "-" ,[ !Ref NamePrefix, "new" ] ]
+        MasterUserPassword: !Ref MasterUserPassword
+        VPCCidr: !Ref NewVPCCidr
+        PublicSubnetCidr: !Ref NewPublicSubnetCidr
+        PrivateSubnetACidr: !Ref NewPrivateSubnetACidr
+        PrivateSubnetCCidr: !Ref NewPrivateSubnetCCidr
+        AppAvailabilityZoneA: !Ref AppAvailabilityZoneA
+        AppAvailabilityZoneC: !Ref AppAvailabilityZoneC
+        AuroraSecurityGroupCidrForDMS: !Ref OldVPCCidr
+
+Outputs:
+  NewVPCId:
+    Value: !GetAtt NewEnvStack.Outputs.VPCId
+  NewPrivateRouteTableId:
+    Value: !GetAtt NewEnvStack.Outputs.PrivateRouteTableId
+  NewDatabaseEndpointAddress:
+    Value: !GetAtt NewEnvStack.Outputs.DatabaseEndpointAddress

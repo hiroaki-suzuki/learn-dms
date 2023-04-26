@@ -1,0 +1,44 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: A sample of DMS
+
+Parameters:
+  NamePrefix:
+    Type: String
+    Default: hs-dms-sample-old-peering
+  NewAccountId:
+    Type: String
+  NewVPCCidr:
+    Type: String
+    Default: 172.16.0.0/16
+  NewVPCId:
+    Type: String
+  OldVPCId:
+    Type: String
+  OldPrivateRouteTableId:
+    Type: String
+  PeeringRoleArn:
+    Type: String
+
+Resources:
+  # VPC Peering
+  VPCPeering:
+    Type: AWS::EC2::VPCPeeringConnection
+    Properties:
+      VpcId: !Ref OldVPCId
+      PeerOwnerId: !Ref NewAccountId
+      PeerVpcId: !Ref NewVPCId
+      PeerRoleArn: !Ref PeeringRoleArn
+      PeerRegion: ap-northeast-1
+      Tags:
+        - Key: Name
+          Value: !Join [ "-", [ !Ref NamePrefix, "vpc-peering" ] ]
+  VPCPeeringRouteOld:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref OldPrivateRouteTableId
+      DestinationCidrBlock: !Ref NewVPCCidr
+      VpcPeeringConnectionId: !Ref VPCPeering
+
+Outputs:
+  VPCPeeringId:
+    Value: !Ref VPCPeering

@@ -1,0 +1,20 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: A sample of DMS
+
+Parameters:
+  OldVPCCidr:
+    Type: String
+    Default: 192.168.0.0/16
+  NewPrivateRouteTableId:
+    Type: String
+  VPCPeeringId:
+    Type: String
+
+Resources:
+  # VPC Peering
+  VPCPeeringRouteNew:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref NewPrivateRouteTableId
+      DestinationCidrBlock: !Ref OldVPCCidr
+      VpcPeeringConnectionId: !Ref VPCPeeringId

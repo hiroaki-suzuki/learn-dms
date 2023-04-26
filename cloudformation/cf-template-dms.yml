@@ -1,0 +1,104 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: A sample of DMS
+
+Parameters:
+  NamePrefix:
+    Type: String
+  MasterUserPassword:
+    Type: String
+  OldVPCId:
+    Type: AWS::EC2::VPC::Id
+  OldVPCCidr:
+    Type: String
+  NewVPCCidr:
+    Type: String
+  OldPrivateSubnetAId:
+    Type: AWS::EC2::Subnet::Id
+  OldPrivateSubnetCId:
+    Type: AWS::EC2::Subnet::Id
+  OldServerName:
+    Type: String
+  NewServerName:
+    Type: String
+
+Resources:
+  DMSSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: !Join [ "-", [ !Ref NamePrefix, "dms", "sg" ] ]
+      GroupDescription: "DMS Security Group"
+      VpcId: !Ref OldVPCId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 3306
+          ToPort: 3306
+          CidrIp: !Ref OldVPCCidr
+        - IpProtocol: tcp
+          FromPort: 3306
+          ToPort: 3306
+          CidrIp: !Ref NewVPCCidr
+      Tags:
+        - Key: Name
+          Value: !Join [ "-", [ !Ref NamePrefix, "dms", "sg" ] ]
+  # DMS
+  DMSReplicationSubnetGroup:
+    Type: AWS::DMS::ReplicationSubnetGroup
+    Properties:
+      ReplicationSubnetGroupIdentifier: !Join [ "-", [ !Ref NamePrefix, "dms", "sg" ] ]
+      ReplicationSubnetGroupDescription: "Sample DMS Replication Subnet Group"
+      SubnetIds:
+        - !Ref OldPrivateSubnetAId
+        - !Ref OldPrivateSubnetCId
+  DMSReplicationInstance:
+    Type: AWS::DMS::ReplicationInstance
+    Properties:
+      PreferredMaintenanceWindow: Mon:20:00-Mon:20:30
+      PubliclyAccessible: false
+      ReplicationInstanceClass: dms.t3.medium
+      ReplicationInstanceIdentifier: !Join [ "-", [ !Ref NamePrefix, "dms", "ri" ] ]
+      ReplicationSubnetGroupIdentifier: !Ref DMSReplicationSubnetGroup
+      VpcSecurityGroupIds:
+        - !Ref DMSSecurityGroup
+  DMSReplicationSourceEndpoint:
+    Type: AWS::DMS::Endpoint
+    Properties:
+      EndpointIdentifier: !Join [ "-", [ !Ref NamePrefix, "dms", "source" ] ]
+      EndpointType: source
+      EngineName: aurora
+      ServerName: !Ref OldServerName
+      Port: 3306
+      Username: admin
+      Password: !Ref MasterUserPassword
+  DMSReplicationTargetEndpoint:
+    Type: AWS::DMS::Endpoint
+    Properties:
+      EndpointIdentifier: !Join [ "-", [ !Ref NamePrefix, "dms", "target" ] ]
+      EndpointType: target
+      EngineName: aurora
+      ServerName: !Ref NewServerName
+      Port: 3306
+      Username: admin
+      Password: !Ref MasterUserPassword
+  DMSReplicationTask:
+    Type: AWS::DMS::ReplicationTask
+    Properties:
+      MigrationType: full-load-and-cdc
+      ReplicationInstanceArn: !Ref DMSReplicationInstance
+      ReplicationTaskIdentifier: !Join [ "-", [ !Ref NamePrefix, "dms", "task" ] ]
+      SourceEndpointArn: !Ref DMSReplicationSourceEndpoint
+      TargetEndpointArn: !Ref DMSReplicationTargetEndpoint
+      TableMappings: |
+        {
+          "rules": [
+              {
+              "rule-type": "selection",
+              "rule-id": "1",
+              "rule-name": "1",
+              "object-locator": {
+                  "schema-name": "sample",
+                  "table-name": "%"
+              },
+              "rule-action": "include"
+              }
+          ]
+        }

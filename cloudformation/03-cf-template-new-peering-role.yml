@@ -1,0 +1,42 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: A sample of DMS
+
+Parameters:
+  NamePrefix:
+    Type: String
+    Default: hs-dms-sample-new-peering-role
+  OldAccountId:
+    Type: String
+
+Resources:
+  # VPC peering accept role for old Account
+  VPCPeeringPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: !Join [ "-", [ !Ref NamePrefix, "vpc", "peering", "policy" ] ]
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action:
+              - "ec2:AcceptVpcPeeringConnection"
+            Resource: "*"
+  VPCPeeringRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Join [ "-", [ !Ref NamePrefix, "vpc", "peering", "role" ] ]
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS:
+                - !Ref OldAccountId
+            Action:
+              - "sts:AssumeRole"
+      ManagedPolicyArns:
+        - !Ref VPCPeeringPolicy
+
+Outputs:
+  PeeringRoleArn:
+    Value: !GetAtt VPCPeeringRole.Arn
